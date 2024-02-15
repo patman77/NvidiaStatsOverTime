@@ -7,11 +7,12 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 # Set up argument parser
-parser = argparse.ArgumentParser(description="Monitor and plot NVIDIA GPU stats to a PNG file.")
+parser = argparse.ArgumentParser(description="Monitor and plot NVIDIA GPU stats to a PNG file with a timeout.")
 parser.add_argument("--gpu-util", action="store_true", default=True, help="Monitor GPU utilization")
 parser.add_argument("--mem-util", action="store_true", default=True, help="Monitor memory utilization")
 parser.add_argument("--temp", action="store_true", default=True, help="Monitor temperature")
 parser.add_argument("--filename", type=str, default="output.png", help="Filename for the output PNG")
+parser.add_argument("--timeout", type=int, default=10, help="Timeout in seconds for the monitoring")
 args = parser.parse_args()
 
 # Regex patterns to extract data
@@ -52,44 +53,45 @@ def parse_output(output):
         else:
             data["temp"].append(None)
 
-# Main loop to continuously capture output
-try:
+def monitor_and_collect_data(timeout):
     start_time = time.time()
     process = subprocess.Popen(["nvidia-smi", "-l", "1"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
-    while True:
-        output = process.stdout.readline()
-        if output == '' and process.poll() is not None:
-            break
-        if output:
-            current_time = time.time() - start_time
-            data["time"].append(current_time)
-            parse_output(output.strip())
+    try:
+        while time.time() - start_time < timeout:
+            output = process.stdout.readline()
+            if output == '' and process.poll() is not None:
+                break
+            if output:
+                current_time = time.time() - start_time
+                data["time"].append(current_time)
+                parse_output(output.strip())
+    finally:
+        process.terminate()
 
-except KeyboardInterrupt:
-    print("Stopping and preparing data for plotting...")
+# Main execution with timeout
+monitor_and_collect_data(args.timeout)
 
-finally:
-    process.terminate()
-    df = pd.DataFrame(data)
-    df.set_index("time", inplace=True)
-    
-    # Plotting
-    sns.set()
-    plt.figure(figsize=(10, 6))
-    
-    if args.gpu_util:
-        sns.lineplot(data=df, x="time", y="gpu_util", label="GPU Utilization")
-    if args.mem_util:
-        sns.lineplot(data=df, x="time", y="mem_util", label="Memory Utilization")
-    if args.temp:
-        sns.lineplot(data=df, x="time", y="temp", label="Temperature")
-    
-    plt.title("NVIDIA GPU Metrics Over Time")
-    plt.ylabel("Value")
-    plt.xlabel("Time (s)")
-    plt.legend()
-    
-    # Save the plot to a PNG file
-    plt.savefig(args.filename)
-    print(f"Plot saved to {args.filename}")
+# Prepare and save data
+df = pd.DataFrame(data)
+df.set_index("time", inplace=True)
+
+# Plotting
+sns.set()
+plt.figure(figsize=(10, 6))
+
+if args.gpu_util:
+    sns.lineplot(data=df, x="time", y="gpu_util", label="GPU Utilization")
+if args.mem_util:
+    sns.lineplot(data=df, x="time", y="mem_util", label="Memory Utilization")
+if args.temp:
+    sns.lineplot(data=df, x="time", y="temp", label="Temperature")
+
+plt.title("NVIDIA GPU Metrics Over Time")
+plt.ylabel("Value")
+plt.xlabel("Time (s)")
+plt.legend()
+
+# Save the plot to a PNG file
+plt.savefig(args.filename)
+print(f"Plot saved to {args.filename}")
