@@ -3,8 +3,8 @@ import re
 import time
 import argparse
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
+import matplotlib.pyplot as plt
 
 # Set up argument parser
 parser = argparse.ArgumentParser(description="Monitor and plot NVIDIA GPU stats to a PNG file with a timeout.")
@@ -19,7 +19,7 @@ args = parser.parse_args()
 patterns = {
     "gpu_util": re.compile(r"\|\s+(\d+)%\s+Default\s+\|"),
     "mem_util": re.compile(r"\|\s+(\d+)MiB\s+/\s+(\d+)MiB\s+\|"),
-    "temp": re.compile(r"\|\s+(\d+)C\s+P\d+\s+\|")
+    "temp": re.compile(r"\|\s+(\d+)C\s+P\d+\s+\|")  # Make sure this regex matches the output
 }
 
 # Data collection function
@@ -40,6 +40,7 @@ def parse_output(output):
     if args.temp:
         temp_match = patterns["temp"].search(output)
         new_row["temp"] = int(temp_match.group(1)) if temp_match else None
+        print(f"Debug - Parsed temperature: {new_row['temp']}C")  # Debug print
     
     return new_row
 
@@ -65,20 +66,20 @@ def monitor_and_collect_data(timeout):
 # Main execution
 df = monitor_and_collect_data(args.timeout)
 
+# Debug print to inspect the DataFrame before plotting
+print(df)
 
-
-# Assuming df is your DataFrame and it's correctly populated
+# Plotting
 if not df.empty:
     sns.set(style="darkgrid")
     plt.figure(figsize=(10, 6))
 
-    # Explicitly specify the columns for x and y values
     if 'gpu_util' in df.columns:
         plt.plot(df['time'], df['gpu_util'], label='GPU Utilization')
     if 'mem_util' in df.columns:
         plt.plot(df['time'], df['mem_util'], label='Memory Utilization')
     if 'temp' in df.columns:
-        plt.plot(df['time'], df['temp'], label='Temperature')
+        plt.plot(df['time'], df['temp'], label='Temperature')  # Plot temperature
 
     plt.title('NVIDIA GPU Metrics Over Time')
     plt.xlabel('Time (s)')
@@ -88,5 +89,3 @@ if not df.empty:
     print(f"Plot saved to {args.filename}")
 else:
     print("No data collected.")
-
-
