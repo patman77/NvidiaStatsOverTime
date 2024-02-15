@@ -1,3 +1,4 @@
+
 import subprocess
 import re
 import time
@@ -18,68 +19,63 @@ args = parser.parse_args()
 # Regex patterns to extract data
 patterns = {
     "gpu_util": re.compile(r"\|\s+(\d+)%\s+Default\s+\|"),
-    "mem_util": re.compile(r"\|\s+(\d+)MiB\s+/\s+(\d+)MiB\s+\|"),
-    "temp": re.compile(r"\|\s+(\d+)C\s+P\d+\s+\|")  # Make sure this regex matches the output
+    "mem_util": re.compile(r"\|\s+(\d+)MiB / (\d+)MiB\s+\|"),
+    "temp": re.compile(r"\|\s+(\d+)C\s+P\d+\s+\|")
 }
 
-# Data collection function
 def parse_output(output):
-    new_row = {}
-    if args.gpu_util:
-        gpu_util_match = patterns["gpu_util"].search(output)
-        new_row["gpu_util"] = int(gpu_util_match.group(1)) if gpu_util_match else None
-    
-    if args.mem_util:
+    matches = re.finditer(patterns["gpu_util"], output)
+    data = []
+    for match in matches:
+        gpu_id = match.group(1)
+        gpu_util = match.group(2)
         mem_util_match = patterns["mem_util"].search(output)
-        if mem_util_match:
-            used_memory, total_memory = mem_util_match.groups()
-            new_row["mem_util"] = (int(used_memory) / int(total_memory)) * 100
-        else:
-            new_row["mem_util"] = None
-    
-    if args.temp:
         temp_match = patterns["temp"].search(output)
-        new_row["temp"] = int(temp_match.group(1)) if temp_match else None
-        print(f"Debug - Parsed temperature: {new_row['temp']}C")  # Debug print
-    
-    return new_row
+        if mem_util_match and temp_match:
+            used_memory, total_memory = mem_util_match.groups()
+            temp = temp_match.group(1)
+            data.append({
+                "gpu_id": gpu_id,
+                "gpu_util": int(gpu_util),
+                "mem_util": (int(used_memory) / int(total_memory)) * 100,
+                "temp": int(temp)
+            })
+    return data
 
 def monitor_and_collect_data(timeout):
     start_time = time.time()
     collected_data = []
-    process = subprocess.Popen(["nvidia-smi", "-l", "1"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    process = subprocess.Popen(["nvidia-smi", "-l", "1"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, universal_newlines=True)
 
     try:
         while time.time() - start_time < timeout:
-            output = process.stdout.readline()
+            output = process.stdout.read()
             if output == '' and process.poll() is not None:
                 break
-            if output and "MiB /" in output:  # Ensures we're parsing a line with the needed info
-                new_row = parse_output(output.strip())
-                new_row["time"] = time.time() - start_time  # Add time to each row
-                collected_data.append(new_row)
+            data = parse_output(output)
+            for d in data:
+                d["time"] = time.time() - start_time
+                collected_data.append(d)
     finally:
         process.terminate()
-    
+
     return pd.DataFrame(collected_data)
 
 # Main execution
 df = monitor_and_collect_data(args.timeout)
 
-# Debug print to inspect the DataFrame before plotting
-print(df)
-
 # Plotting
 if not df.empty:
-    sns.set(style="darkgrid")
+    sns.set()
     plt.figure(figsize=(10, 6))
-
-    if 'gpu_util' in df.columns:
-        plt.plot(df['time'], df['gpu_util'], label='GPU Utilization')
-    if 'mem_util' in df.columns:
-        plt.plot(df['time'], df['mem_util'], label='Memory Utilization')
-    if 'temp' in df.columns:
-        plt.plot(df['time'], df['temp'], label='Temperature')  # Plot temperature
+    for gpu_id in df['gpu_id'].unique():
+        gpu_df = df[df['gpu_id'] == gpu_id]
+        if 'gpu_util' in gpu_df.columns:
+            sns.lineplot(data=gpu_df, x='time', y='gpu_util', label=f'GPU {gpu_id} Utilization')
+        if 'mem_util' in gpu_df.columns:
+            sns.lineplot(data=gpu_df, x='time', y='mem_util', label=f'GPU {gpu_id} Memory Utilization')
+        if 'temp' in gpu_df.columns:
+            sns.lineplot(data=gpu_df, x='time', y='temp', label=f'GPU {gpu_id} Temperature')
 
     plt.title('NVIDIA GPU Metrics Over Time')
     plt.xlabel('Time (s)')
