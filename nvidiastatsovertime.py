@@ -7,10 +7,11 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 # Set up argument parser
-parser = argparse.ArgumentParser(description="Monitor and plot NVIDIA GPU stats.")
+parser = argparse.ArgumentParser(description="Monitor and plot NVIDIA GPU stats to a PNG file.")
 parser.add_argument("--gpu-util", action="store_true", default=True, help="Monitor GPU utilization")
 parser.add_argument("--mem-util", action="store_true", default=True, help="Monitor memory utilization")
 parser.add_argument("--temp", action="store_true", default=True, help="Monitor temperature")
+parser.add_argument("--filename", type=str, default="output.png", help="Filename for the output PNG")
 args = parser.parse_args()
 
 # Regex patterns to extract data
@@ -66,7 +67,7 @@ try:
             parse_output(output.strip())
 
 except KeyboardInterrupt:
-    print("Stopping and plotting data...")
+    print("Stopping and preparing data for plotting...")
 
 finally:
     process.terminate()
@@ -88,4 +89,7 @@ finally:
     plt.ylabel("Value")
     plt.xlabel("Time (s)")
     plt.legend()
-    plt.show()
+    
+    # Save the plot to a PNG file
+    plt.savefig(args.filename)
+    print(f"Plot saved to {args.filename}")
