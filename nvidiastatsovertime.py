@@ -22,8 +22,11 @@ patterns = {
     "temp": re.compile(r"\|\s+(\d+)C\s+P\d+\s+\|")
 }
 
-# Initialize DataFrame columns based on enabled metrics
+# Global variables
 data_columns = ["time"]
+start_time = None  # Initialize start_time as global variable
+
+# Initialize DataFrame columns based on enabled metrics
 if args.gpu_util:
     data_columns.append("gpu_util")
 if args.mem_util:
@@ -35,6 +38,7 @@ if args.temp:
 df = pd.DataFrame(columns=data_columns)
 
 def parse_output(output):
+    global start_time  # Use the global start_time
     new_row = {"time": time.time() - start_time}
     if args.gpu_util:
         gpu_util_match = patterns["gpu_util"].search(output)
@@ -55,9 +59,9 @@ def parse_output(output):
     return new_row
 
 def monitor_and_collect_data(timeout):
+    global start_time, df  # Use global variables
     start_time = time.time()
     process = subprocess.Popen(["nvidia-smi", "-l", "1"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-    global df  # Use the global df to allow modification inside this function
 
     try:
         while time.time() - start_time < timeout:
