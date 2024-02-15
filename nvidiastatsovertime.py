@@ -22,24 +22,9 @@ patterns = {
     "temp": re.compile(r"\|\s+(\d+)C\s+P\d+\s+\|")
 }
 
-# Global variables
-data_columns = ["time"]
-start_time = None  # Initialize start_time as global variable
-
-# Initialize DataFrame columns based on enabled metrics
-if args.gpu_util:
-    data_columns.append("gpu_util")
-if args.mem_util:
-    data_columns.append("mem_util")
-if args.temp:
-    data_columns.append("temp")
-
-# Initialize a DataFrame with specified columns
-df = pd.DataFrame(columns=data_columns)
-
+# Data collection function
 def parse_output(output):
-    global start_time  # Use the global start_time
-    new_row = {"time": time.time() - start_time}
+    new_row = {}
     if args.gpu_util:
         gpu_util_match = patterns["gpu_util"].search(output)
         new_row["gpu_util"] = int(gpu_util_match.group(1)) if gpu_util_match else None
@@ -59,8 +44,8 @@ def parse_output(output):
     return new_row
 
 def monitor_and_collect_data(timeout):
-    global start_time, df  # Use global variables
     start_time = time.time()
+    collected_data = []
     process = subprocess.Popen(["nvidia-smi", "-l", "1"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
     try:
@@ -70,27 +55,33 @@ def monitor_and_collect_data(timeout):
                 break
             if output and "MiB /" in output:  # Ensures we're parsing a line with the needed info
                 new_row = parse_output(output.strip())
-                df = df.append(new_row, ignore_index=True)
+                new_row["time"] = time.time() - start_time  # Add time to each row
+                collected_data.append(new_row)
     finally:
         process.terminate()
+    
+    return pd.DataFrame(collected_data)
 
-# Execute monitoring with the specified timeout
-monitor_and_collect_data(args.timeout)
+# Main execution
+df = monitor_and_collect_data(args.timeout)
 
-# Check if DataFrame is not empty and plot
+# Plotting
 if not df.empty:
     sns.set()
     plt.figure(figsize=(10, 6))
     
-    for metric in data_columns[1:]:  # Skip 'time' column
-        if metric in df.columns:
-            sns.lineplot(data=df, x="time", y=metric, label=metric.replace("_", " ").title())
+    if args.gpu_util and "gpu_util" in df:
+        sns.lineplot(data=df, x="time", y="gpu_util", label="GPU Utilization")
+    if args.mem_util and "mem_util" in df:
+        sns.lineplot(data=df, x="time", y="mem_util", label="Memory Utilization")
+    if args.temp and "temp" in df:
+        sns.lineplot(data=df, x="time", y="temp", label="Temperature")
 
     plt.title("NVIDIA GPU Metrics Over Time")
     plt.ylabel("Value")
     plt.xlabel("Time (s)")
     plt.legend()
-
+    
     # Save the plot to a PNG file
     plt.savefig(args.filename)
     print(f"Plot saved to {args.filename}")
