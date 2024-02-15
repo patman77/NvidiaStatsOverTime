@@ -70,20 +70,22 @@ if not df.empty:
     sns.set()
     plt.figure(figsize=(10, 6))
     
-    if args.gpu_util and "gpu_util" in df:
+    # Ensure column exists before plotting
+    if "gpu_util" in df.columns and args.gpu_util:
         sns.lineplot(data=df, x="time", y="gpu_util", label="GPU Utilization")
-    if args.mem_util and "mem_util" in df:
+    if "mem_util" in df.columns and args.mem_util:
         sns.lineplot(data=df, x="time", y="mem_util", label="Memory Utilization")
-    if args.temp and "temp" in df:
+    if "temp" in df.columns and args.temp:
         sns.lineplot(data=df, x="time", y="temp", label="Temperature")
 
     plt.title("NVIDIA GPU Metrics Over Time")
     plt.ylabel("Value")
     plt.xlabel("Time (s)")
     plt.legend()
-    
+
     # Save the plot to a PNG file
     plt.savefig(args.filename)
     print(f"Plot saved to {args.filename}")
 else:
     print("No data collected.")
+
