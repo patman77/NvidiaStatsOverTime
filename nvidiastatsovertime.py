@@ -17,81 +17,78 @@ args = parser.parse_args()
 
 # Regex patterns to extract data
 patterns = {
-    "gpu_util": re.compile(r"(\d+)%\s+Default\s+"),
-    "mem_util": re.compile(r"(\d+)%\s+\|\s+\d+MiB\s+/\s+\d+MiB\s+\|"),
-    "temp": re.compile(r"(\d+)C\s+\|\s+")
+    "gpu_util": re.compile(r"\|\s+(\d+)%\s+Default\s+\|"),
+    "mem_util": re.compile(r"\|\s+(\d+)MiB\s+/\s+(\d+)MiB\s+\|"),
+    "temp": re.compile(r"\|\s+(\d+)C\s+P\d+\s+\|")
 }
 
-# Data storage
-data = {
-    "time": [],
-    "gpu_util": [],
-    "mem_util": [],
-    "temp": [],
-}
+# Initialize DataFrame columns based on enabled metrics
+data_columns = ["time"]
+if args.gpu_util:
+    data_columns.append("gpu_util")
+if args.mem_util:
+    data_columns.append("mem_util")
+if args.temp:
+    data_columns.append("temp")
 
-# Function to parse output
+# Initialize a DataFrame with specified columns
+df = pd.DataFrame(columns=data_columns)
+
 def parse_output(output):
+    new_row = {"time": time.time() - start_time}
     if args.gpu_util:
         gpu_util_match = patterns["gpu_util"].search(output)
-        if gpu_util_match:
-            data["gpu_util"].append(int(gpu_util_match.group(1)))
-        else:
-            data["gpu_util"].append(None)
+        new_row["gpu_util"] = int(gpu_util_match.group(1)) if gpu_util_match else None
     
     if args.mem_util:
         mem_util_match = patterns["mem_util"].search(output)
         if mem_util_match:
-            data["mem_util"].append(int(mem_util_match.group(1)))
+            used_memory, total_memory = mem_util_match.groups()
+            new_row["mem_util"] = (int(used_memory) / int(total_memory)) * 100
         else:
-            data["mem_util"].append(None)
+            new_row["mem_util"] = None
     
     if args.temp:
         temp_match = patterns["temp"].search(output)
-        if temp_match:
-            data["temp"].append(int(temp_match.group(1)))
-        else:
-            data["temp"].append(None)
+        new_row["temp"] = int(temp_match.group(1)) if temp_match else None
+    
+    return new_row
 
 def monitor_and_collect_data(timeout):
     start_time = time.time()
     process = subprocess.Popen(["nvidia-smi", "-l", "1"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    global df  # Use the global df to allow modification inside this function
 
     try:
         while time.time() - start_time < timeout:
             output = process.stdout.readline()
             if output == '' and process.poll() is not None:
                 break
-            if output:
-                current_time = time.time() - start_time
-                data["time"].append(current_time)
-                parse_output(output.strip())
+            if output and "MiB /" in output:  # Ensures we're parsing a line with the needed info
+                new_row = parse_output(output.strip())
+                df = df.append(new_row, ignore_index=True)
     finally:
         process.terminate()
 
-# Main execution with timeout
+# Execute monitoring with the specified timeout
 monitor_and_collect_data(args.timeout)
 
-# Prepare and save data
-df = pd.DataFrame(data)
-df.set_index("time", inplace=True)
+# Check if DataFrame is not empty and plot
+if not df.empty:
+    sns.set()
+    plt.figure(figsize=(10, 6))
+    
+    for metric in data_columns[1:]:  # Skip 'time' column
+        if metric in df.columns:
+            sns.lineplot(data=df, x="time", y=metric, label=metric.replace("_", " ").title())
 
-# Plotting
-sns.set()
-plt.figure(figsize=(10, 6))
+    plt.title("NVIDIA GPU Metrics Over Time")
+    plt.ylabel("Value")
+    plt.xlabel("Time (s)")
+    plt.legend()
 
-if args.gpu_util:
-    sns.lineplot(data=df, x="time", y="gpu_util", label="GPU Utilization")
-if args.mem_util:
-    sns.lineplot(data=df, x="time", y="mem_util", label="Memory Utilization")
-if args.temp:
-    sns.lineplot(data=df, x="time", y="temp", label="Temperature")
-
-plt.title("NVIDIA GPU Metrics Over Time")
-plt.ylabel("Value")
-plt.xlabel("Time (s)")
-plt.legend()
-
-# Save the plot to a PNG file
-plt.savefig(args.filename)
-print(f"Plot saved to {args.filename}")
+    # Save the plot to a PNG file
+    plt.savefig(args.filename)
+    print(f"Plot saved to {args.filename}")
+else:
+    print("No data collected.")
