@@ -3,8 +3,8 @@ import re
 import time
 import argparse
 import pandas as pd
-import seaborn as sns
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 # Set up argument parser
 parser = argparse.ArgumentParser(description="Monitor and plot NVIDIA GPU stats to a PNG file with a timeout.")
@@ -65,27 +65,28 @@ def monitor_and_collect_data(timeout):
 # Main execution
 df = monitor_and_collect_data(args.timeout)
 
-# Plotting
+
+
+# Assuming df is your DataFrame and it's correctly populated
 if not df.empty:
-    sns.set()
+    sns.set(style="darkgrid")
     plt.figure(figsize=(10, 6))
-    
-    # Ensure column exists before plotting
-    if "gpu_util" in df.columns and args.gpu_util:
-        sns.lineplot(data=df, x="time", y="gpu_util", label="GPU Utilization")
-    if "mem_util" in df.columns and args.mem_util:
-        sns.lineplot(data=df, x="time", y="mem_util", label="Memory Utilization")
-    if "temp" in df.columns and args.temp:
-        sns.lineplot(data=df, x="time", y="temp", label="Temperature")
 
-    plt.title("NVIDIA GPU Metrics Over Time")
-    plt.ylabel("Value")
-    plt.xlabel("Time (s)")
+    # Explicitly specify the columns for x and y values
+    if 'gpu_util' in df.columns:
+        plt.plot(df['time'], df['gpu_util'], label='GPU Utilization')
+    if 'mem_util' in df.columns:
+        plt.plot(df['time'], df['mem_util'], label='Memory Utilization')
+    if 'temp' in df.columns:
+        plt.plot(df['time'], df['temp'], label='Temperature')
+
+    plt.title('NVIDIA GPU Metrics Over Time')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Value')
     plt.legend()
-
-    # Save the plot to a PNG file
     plt.savefig(args.filename)
     print(f"Plot saved to {args.filename}")
 else:
     print("No data collected.")
+
 
